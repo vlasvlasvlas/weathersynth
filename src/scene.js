@@ -236,7 +236,7 @@ export class WeatherScene {
     this.audio = audio;
     this.callbacks = callbacks;
     this.atmosphere = createFallbackAtmosphere();
-    this.backgroundMode = "atmospheric";
+    this.backgroundMode = "white";
     this.palette = buildPalette(this.atmosphere, this.backgroundMode);
     this.brushMode = "points";
     this.particleControls = {
