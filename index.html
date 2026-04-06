@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>WeatherSynth</title>
+    <meta
+      name="description"
+      content="Instrumento atmosferico visual-sonoro impulsado por clima real."
+    />
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell" id="app-shell">
+      <canvas id="sky-canvas" aria-label="Canvas interactivo meteorologico"></canvas>
+      <div class="noise-layer" aria-hidden="true"></div>
+
+      <div class="top-controls">
+        <button
+          id="info-button"
+          class="icon-button"
+          type="button"
+          aria-label="Abrir informacion del proyecto"
+          title="Informacion"
+        >
+          <span aria-hidden="true">?</span>
+        </button>
+        <button
+          id="settings-button"
+          class="icon-button"
+          type="button"
+          aria-label="Abrir configuracion"
+          aria-controls="settings-panel"
+          aria-expanded="false"
+          title="Configuracion"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12 8.6A3.4 3.4 0 1 0 12 15.4 3.4 3.4 0 0 0 12 8.6zm9 3.4-.93-.53c-.16-.09-.25-.27-.23-.45l.12-1.02c.06-.54-.28-1.03-.81-1.17l-.99-.27a.53.53 0 0 1-.35-.34l-.38-.95a1.03 1.03 0 0 0-1.28-.59l-.98.34c-.17.06-.36.02-.49-.11l-.72-.73a1.04 1.04 0 0 0-1.46 0l-.72.73a.51.51 0 0 1-.49.11l-.98-.34a1.03 1.03 0 0 0-1.28.59l-.38.95c-.06.16-.19.28-.35.34l-.99.27c-.53.14-.87.63-.81 1.17l.12 1.02a.5.5 0 0 1-.23.45L3 12l.93.53c.16.09.25.27.23.45l-.12 1.02c-.06.54.28 1.03.81 1.17l.99.27c.16.04.29.17.35.34l.38.95c.2.51.77.77 1.28.59l.98-.34a.5.5 0 0 1 .49.11l.72.73c.4.4 1.05.4 1.46 0l.72-.73a.5.5 0 0 1 .49-.11l.98.34c.51.18 1.08-.08 1.28-.59l.38-.95c.06-.17.19-.3.35-.34l.99-.27c.53-.14.87-.63.81-1.17l-.12-1.02a.5.5 0 0 1 .23-.45L21 12z"
+              fill="currentColor"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <div id="settings-backdrop" class="backdrop" hidden></div>
+
+      <aside
+        id="settings-panel"
+        class="sidebar panel"
+        aria-hidden="true"
+        aria-labelledby="settings-title"
+      >
+        <div class="sidebar-header">
+          <div>
+            <p class="eyebrow">Config</p>
+            <h1 id="settings-title" class="sidebar-title">WeatherSynth</h1>
+          </div>
+          <button
+            id="close-settings-button"
+            class="close-button"
+            type="button"
+            aria-label="Cerrar configuracion"
+          >
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+
+        <div class="sidebar-scroll">
+          <details class="sidebar-section accordion-section" data-accordion-item open>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">Sonido</p>
+                <p class="section-copy">Escenas climaticas y voces clasicas desde YAML.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <label class="control-field">
+                <span class="control-label">Escena</span>
+                <select id="preset-select" class="select" disabled></select>
+              </label>
+
+              <label class="control-field">
+                <span class="control-label">Tipo de sonido</span>
+                <select id="voice-select" class="select" disabled></select>
+              </label>
+            </div>
+          </details>
+
+          <details class="sidebar-section accordion-section" data-accordion-item>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">Master</p>
+                <p class="section-copy">Volumen principal, golpes y sosten.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Volumen principal</span>
+                  <output id="master-volume-output" for="master-volume-control">82%</output>
+                </span>
+                <input
+                  id="master-volume-control"
+                  class="range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="82"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Golpes</span>
+                  <output id="transient-output" for="transient-control">78%</output>
+                </span>
+                <input
+                  id="transient-control"
+                  class="range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="78"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Sosten</span>
+                  <output id="drone-output" for="drone-control">64%</output>
+                </span>
+                <input
+                  id="drone-control"
+                  class="range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="64"
+                />
+              </label>
+            </div>
+          </details>
+
+          <details class="sidebar-section accordion-section" data-accordion-item>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">Filtro</p>
+                <p class="section-copy">Tipo, cutoff, resonancia y apertura.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <label class="control-field">
+                <span class="control-label">Tipo de filtro</span>
+                <select id="filter-type-select" class="select">
+                  <option value="lowpass">Low-pass</option>
+                  <option value="highpass">High-pass</option>
+                  <option value="bandpass">Band-pass</option>
+                  <option value="notch">Notch</option>
+                </select>
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Cutoff</span>
+                  <output id="filter-cutoff-output" for="filter-cutoff-control">1900 Hz</output>
+                </span>
+                <input
+                  id="filter-cutoff-control"
+                  class="range"
+                  type="range"
+                  min="80"
+                  max="12000"
+                  step="10"
+                  value="1900"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Resonancia</span>
+                  <output id="filter-resonance-output" for="filter-resonance-control">0.7</output>
+                </span>
+                <input
+                  id="filter-resonance-control"
+                  class="range"
+                  type="range"
+                  min="0.2"
+                  max="16"
+                  step="0.1"
+                  value="0.7"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Env</span>
+                  <output id="filter-env-output" for="filter-env-control">960 Hz</output>
+                </span>
+                <input
+                  id="filter-env-control"
+                  class="range"
+                  type="range"
+                  min="0"
+                  max="2600"
+                  step="10"
+                  value="960"
+                />
+              </label>
+            </div>
+          </details>
+
+          <details class="sidebar-section accordion-section" data-accordion-item>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">Delay</p>
+                <p class="section-copy">Mix, tiempo, feedback y tono.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Mix</span>
+                  <output id="delay-mix-output" for="delay-mix-control">14%</output>
+                </span>
+                <input
+                  id="delay-mix-control"
+                  class="range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="14"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Tiempo</span>
+                  <output id="delay-time-output" for="delay-time-control">260 ms</output>
+                </span>
+                <input
+                  id="delay-time-control"
+                  class="range"
+                  type="range"
+                  min="40"
+                  max="1200"
+                  step="10"
+                  value="260"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Feedback</span>
+                  <output id="delay-feedback-output" for="delay-feedback-control">28%</output>
+                </span>
+                <input
+                  id="delay-feedback-control"
+                  class="range"
+                  type="range"
+                  min="0"
+                  max="95"
+                  value="28"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Tono</span>
+                  <output id="delay-tone-output" for="delay-tone-control">2900 Hz</output>
+                </span>
+                <input
+                  id="delay-tone-control"
+                  class="range"
+                  type="range"
+                  min="400"
+                  max="9000"
+                  step="10"
+                  value="2900"
+                />
+              </label>
+            </div>
+          </details>
+
+          <details class="sidebar-section accordion-section" data-accordion-item>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">Reverb</p>
+                <p class="section-copy">Mix, decay, pre-delay y tono.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Mix</span>
+                  <output id="reverb-mix-output" for="reverb-mix-control">18%</output>
+                </span>
+                <input
+                  id="reverb-mix-control"
+                  class="range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="18"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Decay</span>
+                  <output id="reverb-decay-output" for="reverb-decay-control">2.8 s</output>
+                </span>
+                <input
+                  id="reverb-decay-control"
+                  class="range"
+                  type="range"
+                  min="0.5"
+                  max="8"
+                  step="0.1"
+                  value="2.8"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Pre-delay</span>
+                  <output id="reverb-predelay-output" for="reverb-predelay-control">30 ms</output>
+                </span>
+                <input
+                  id="reverb-predelay-control"
+                  class="range"
+                  type="range"
+                  min="0"
+                  max="180"
+                  step="5"
+                  value="30"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Tono</span>
+                  <output id="reverb-tone-output" for="reverb-tone-control">3200 Hz</output>
+                </span>
+                <input
+                  id="reverb-tone-control"
+                  class="range"
+                  type="range"
+                  min="400"
+                  max="9000"
+                  step="10"
+                  value="3200"
+                />
+              </label>
+            </div>
+          </details>
+
+          <details class="sidebar-section accordion-section" data-accordion-item>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">LFO</p>
+                <p class="section-copy">Modulacion global sobre filtro, delay o drone.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <label class="control-field">
+                <span class="control-label">Destino</span>
+                <select id="lfo-target-select" class="select">
+                  <option value="none">Off</option>
+                  <option value="filter">Filtro</option>
+                  <option value="delay">Delay</option>
+                  <option value="drone">Drone</option>
+                </select>
+              </label>
+
+              <label class="control-field">
+                <span class="control-label">Forma</span>
+                <select id="lfo-wave-select" class="select">
+                  <option value="sine">Sine</option>
+                  <option value="triangle">Triangle</option>
+                  <option value="square">Square</option>
+                  <option value="sawtooth">Saw</option>
+                </select>
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Rate</span>
+                  <output id="lfo-rate-output" for="lfo-rate-control">0.12 Hz</output>
+                </span>
+                <input
+                  id="lfo-rate-control"
+                  class="range"
+                  type="range"
+                  min="0.05"
+                  max="12"
+                  step="0.01"
+                  value="0.12"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Depth</span>
+                  <output id="lfo-depth-output" for="lfo-depth-control">36%</output>
+                </span>
+                <input
+                  id="lfo-depth-control"
+                  class="range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="36"
+                />
+              </label>
+            </div>
+          </details>
+
+          <details class="sidebar-section accordion-section" data-accordion-item>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">Particulas</p>
+                <p class="section-copy">Tus controles empujan vida y cantidad sobre la base que trae el clima.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Vida</span>
+                  <output id="life-output" for="life-control">62%</output>
+                </span>
+                <input
+                  id="life-control"
+                  class="range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="62"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Cantidad</span>
+                  <output id="density-output" for="density-control">70%</output>
+                </span>
+                <input
+                  id="density-control"
+                  class="range"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="70"
+                />
+              </label>
+            </div>
+          </details>
+
+          <details class="sidebar-section accordion-section" data-accordion-item>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">Fondo</p>
+                <p class="section-copy">Atmosferico sigue el clima. Negro y blanco lo fijan manualmente.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <label class="control-field">
+                <span class="control-label">Modo de fondo</span>
+                <select id="background-mode-select" class="select">
+                  <option value="atmospheric">Atmosferico</option>
+                  <option value="black">Negro</option>
+                  <option value="white">Blanco</option>
+                </select>
+              </label>
+            </div>
+          </details>
+
+          <details class="sidebar-section accordion-section" data-accordion-item>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">Emisores</p>
+                <p class="section-copy">Puntos fijos manuales que disparan solos.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <div class="button-row">
+                <button id="emitter-mode-button" class="text-button" type="button">
+                  Modo emisor
+                </button>
+                <button id="emitter-delete-button" class="text-button" type="button" disabled>
+                  Eliminar
+                </button>
+              </div>
+
+              <p id="emitter-status" class="control-note">
+                Sin emisores. Activa modo emisor y hace click en la pantalla.
+              </p>
+
+              <div id="emitter-list" class="emitter-list" aria-live="polite"></div>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Ritmo</span>
+                  <output id="emitter-rate-output" for="emitter-rate-control">1.4 s</output>
+                </span>
+                <input
+                  id="emitter-rate-control"
+                  class="range"
+                  type="range"
+                  min="150"
+                  max="4000"
+                  step="50"
+                  value="1400"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label-row">
+                  <span>Salida</span>
+                  <output id="emitter-burst-output" for="emitter-burst-control">7</output>
+                </span>
+                <input
+                  id="emitter-burst-control"
+                  class="range"
+                  type="range"
+                  min="1"
+                  max="20"
+                  step="1"
+                  value="7"
+                />
+              </label>
+            </div>
+          </details>
+
+          <details class="sidebar-section accordion-section" data-accordion-item>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">Trazo</p>
+                <p class="section-copy">No solo puntos: especies de dibujo.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <div
+                id="brush-buttons"
+                class="segmented"
+                role="group"
+                aria-label="Modos de dibujo"
+              ></div>
+            </div>
+          </details>
+
+          <details class="sidebar-section accordion-section" data-accordion-item>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">Clima -> escena</p>
+                <p class="section-copy">Que viene del tiempo y que viene de vos.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <ul class="mapping-list">
+                <li class="mapping-item">
+                  <div class="mapping-head">
+                    <strong>Color</strong>
+                    <span class="mapping-tag is-climate">Clima</span>
+                  </div>
+                  <span>Hora del dia + temperatura + nubosidad + lluvia.</span>
+                </li>
+                <li class="mapping-item">
+                  <div class="mapping-head">
+                    <strong>Direccion</strong>
+                    <span class="mapping-tag is-climate">Clima</span>
+                  </div>
+                  <span>Viento.</span>
+                </li>
+                <li class="mapping-item">
+                  <div class="mapping-head">
+                    <strong>Velocidad</strong>
+                    <span class="mapping-tag is-climate">Clima</span>
+                  </div>
+                  <span>Viento + rafagas.</span>
+                </li>
+                <li class="mapping-item">
+                  <div class="mapping-head">
+                    <strong>Densidad</strong>
+                    <span class="mapping-tag is-hybrid">Mixto</span>
+                  </div>
+                  <span>Lluvia + humedad + tu control de cantidad.</span>
+                </li>
+                <li class="mapping-item">
+                  <div class="mapping-head">
+                    <strong>Vida</strong>
+                    <span class="mapping-tag is-hybrid">Mixto</span>
+                  </div>
+                  <span>Humedad + tu control de vida.</span>
+                </li>
+                <li class="mapping-item">
+                  <div class="mapping-head">
+                    <strong>Fondo</strong>
+                    <span class="mapping-tag is-hybrid">Mixto</span>
+                  </div>
+                  <span>Atmosferico usa el clima; negro o blanco los elegis vos.</span>
+                </li>
+                <li class="mapping-item">
+                  <div class="mapping-head">
+                    <strong>Caida</strong>
+                    <span class="mapping-tag is-climate">Clima</span>
+                  </div>
+                  <span>Lluvia.</span>
+                </li>
+                <li class="mapping-item">
+                  <div class="mapping-head">
+                    <strong>Emisores</strong>
+                    <span class="mapping-tag is-manual">Manual</span>
+                  </div>
+                  <span>Los creas vos; su ritmo y salida se editan desde el sidebar.</span>
+                </li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="sidebar-section accordion-section" data-accordion-item>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">Atmosfera</p>
+                <p class="section-copy">Lectura actual del cielo.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <div class="button-row accordion-actions">
+                <button id="refresh-button" class="text-button" type="button">
+                  Actualizar
+                </button>
+              </div>
+
+              <p id="sidebar-summary" class="sidebar-summary">Sincronizando cielo...</p>
+              <p id="sidebar-source" class="sidebar-source">Esperando datos</p>
+
+              <dl class="mini-stats">
+                <div class="mini-stat">
+                  <dt>Viento</dt>
+                  <dd id="wind-value">--</dd>
+                </div>
+                <div class="mini-stat">
+                  <dt>Lluvia</dt>
+                  <dd id="rain-value">--</dd>
+                </div>
+                <div class="mini-stat">
+                  <dt>Humedad</dt>
+                  <dd id="humidity-value">--</dd>
+                </div>
+                <div class="mini-stat">
+                  <dt>Temperatura</dt>
+                  <dd id="temp-value">--</dd>
+                </div>
+                <div class="mini-stat">
+                  <dt>Nubosidad</dt>
+                  <dd id="cloud-value">--</dd>
+                </div>
+                <div class="mini-stat">
+                  <dt>Fase</dt>
+                  <dd id="phase-value">--</dd>
+                </div>
+              </dl>
+            </div>
+          </details>
+
+          <details class="sidebar-section accordion-section sidebar-note" data-accordion-item>
+            <summary class="accordion-summary">
+              <div class="accordion-meta">
+                <p class="section-title">Archivo</p>
+                <p class="section-copy">Escenas y voces salen de <code>config/sound-presets.yaml</code>.</p>
+              </div>
+              <span class="accordion-icon" aria-hidden="true"></span>
+            </summary>
+
+            <div class="accordion-content">
+              <p class="section-copy">
+                El motor lee presets, voces y defaults desde <code>config/sound-presets.yaml</code>.
+              </p>
+            </div>
+          </details>
+        </div>
+      </aside>
+
+      <div id="info-modal" class="modal-layer" hidden>
+        <article
+          class="modal-card panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="info-title"
+        >
+          <button
+            id="close-info-button"
+            class="close-button modal-close"
+            type="button"
+            aria-label="Cerrar informacion"
+          >
+            <span aria-hidden="true">&times;</span>
+          </button>
+
+          <p class="eyebrow">WeatherSynth</p>
+          <h2 id="info-title" class="modal-title">Tocas el dia.</h2>
+
+          <p class="modal-copy">
+            WeatherSynth es un instrumento atmosferico visual-sonoro: toma tu
+            ubicacion, lee el clima real y deja que viento, lluvia, humedad,
+            nubosidad y hora del dia deformen color, movimiento y sintesis.
+          </p>
+          <p class="modal-copy">
+            La pantalla principal queda muda: solo color y materia. La rueda
+            abre el sintetizador, el mapa del clima, los controles de particulas
+            y los emisores fijos. El primer trazo activa el audio.
+          </p>
+          <p class="modal-copy">
+            Dibujas, el cielo corrige.
+          </p>
+
+          <a
+            class="button-link"
+            href="https://github.com/vlasvlasvlas/weathersynth"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Ver repo en GitHub
+          </a>
+        </article>
+      </div>
+    </div>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+  </html>
