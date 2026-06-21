@@ -68,3 +68,6 @@ Para activarlo en GitHub:
 1. entra a `Settings -> Pages`
 2. en `Build and deployment`, usa `GitHub Actions`
 3. hace push a `main`
+## License
+
+MIT License — © 2026 [Vladimiro Bellini](https://github.com/vlasvlasvlas). Free to use and modify, attribution required.
