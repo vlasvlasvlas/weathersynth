@@ -12,6 +12,13 @@ La pantalla principal queda casi muda:
 - panel lateral para sintesis, FX, filtro, LFO, particulas y emisores
 - modal de informacion con link al repo
 
+## Control de volumen
+
+La interfaz tiene un unico control continuo de volumen: `Master`. Los balances
+internos de transientes, drone, delay y reverb estan fijados y limitados en el
+engine para que cambiar preset, voz o modo de interaccion no cambie el techo de
+salida. La salida final se mezcla en mono antes del destino de audio.
+
 ## Stack
 
 - `HTML`
@@ -68,6 +75,7 @@ Para activarlo en GitHub:
 1. entra a `Settings -> Pages`
 2. en `Build and deployment`, usa `GitHub Actions`
 3. hace push a `main`
+
 ## License
 
 MIT License — © 2026 [Vladimiro Bellini](https://github.com/vlasvlasvlas). Free to use and modify, attribution required.

@@ -9,10 +9,6 @@ function mapRange(value, inMin, inMax, outMin, outMax) {
   return outMin + (outMax - outMin) * amount;
 }
 
-function randomBetween(min, max) {
-  return min + Math.random() * (max - min);
-}
-
 function semitoneToRatio(semitones) {
   return 2 ** (semitones / 12);
 }
@@ -29,11 +25,23 @@ const FALLBACK_ATMOSPHERE = {
   },
 };
 
+const MASTER_OUTPUT_TRIM = 0.78;
+const FIXED_TRANSIENT_LEVEL = 72;
+const FIXED_DRONE_LEVEL = 64;
+const MAX_DELAY_FEEDBACK = 0.42;
+const MAX_DELAY_SEND = 0.28;
+const MAX_DELAY_WET = 0.32;
+const MAX_REVERB_SEND = 0.24;
+const MAX_REVERB_WET = 0.28;
+const MAX_FILTER_RESONANCE = 5.5;
+
 export class WeatherAudioEngine {
   constructor(soundConfig = DEFAULT_SOUND_CONFIG) {
     this.context = null;
     this.inputBus = null;
     this.master = null;
+    this.limiter = null;
+    this.monoOut = null;
     this.filter = null;
     this.dryGain = null;
     this.compressor = null;
@@ -89,6 +97,8 @@ export class WeatherAudioEngine {
     this.context = new AudioContextClass();
     this.inputBus = this.context.createGain();
     this.master = this.context.createGain();
+    this.limiter = this.context.createDynamicsCompressor();
+    this.monoOut = this.context.createGain();
     this.filter = this.context.createBiquadFilter();
     this.dryGain = this.context.createGain();
     this.compressor = this.context.createDynamicsCompressor();
@@ -115,9 +125,20 @@ export class WeatherAudioEngine {
     this.compressor.ratio.value = 10;
     this.compressor.attack.value = 0.003;
     this.compressor.release.value = 0.18;
+    this.limiter.threshold.value = -7;
+    this.limiter.knee.value = 0;
+    this.limiter.ratio.value = 18;
+    this.limiter.attack.value = 0.001;
+    this.limiter.release.value = 0.08;
+    this.limiter.channelCount = 1;
+    this.limiter.channelCountMode = "explicit";
+    this.limiter.channelInterpretation = "speakers";
+    this.monoOut.channelCount = 1;
+    this.monoOut.channelCountMode = "explicit";
+    this.monoOut.channelInterpretation = "speakers";
     this.delayTone.type = "lowpass";
     this.reverbTone.type = "lowpass";
-    this.master.gain.value = this.config.master.gain * (this.controls.master_volume / 100);
+    this.master.gain.value = this.getMasterGainTarget();
     this.droneGain.gain.value = 0.0001;
     this.delaySend.gain.value = 0;
     this.delayWet.gain.value = 0;
@@ -142,7 +163,9 @@ export class WeatherAudioEngine {
     this.reverbWet.connect(this.compressor);
     this.droneGain.connect(this.inputBus);
     this.compressor.connect(this.master);
-    this.master.connect(this.context.destination);
+    this.master.connect(this.limiter);
+    this.limiter.connect(this.monoOut);
+    this.monoOut.connect(this.context.destination);
     this.lfoOsc.connect(this.lfoGain);
 
     this.rebuildDrone();
@@ -207,15 +230,53 @@ export class WeatherAudioEngine {
     return this.config.voices[this.currentVoiceId];
   }
 
-  getDefaultControlsForPreset(presetId) {
+  getMasterGainTarget() {
+    const numericMaster = Number(this.controls.master_volume);
+    const masterVolume = Number.isFinite(numericMaster) ? numericMaster : 82;
+
+    return (
+      clamp(masterVolume / 100, 0, 1) *
+      this.config.master.gain *
+      MASTER_OUTPUT_TRIM
+    );
+  }
+
+  getTransientLevelScale() {
+    return FIXED_TRANSIENT_LEVEL / 100;
+  }
+
+  getDroneLevelScale() {
+    return FIXED_DRONE_LEVEL / 100;
+  }
+
+  sanitizeControls(controls, masterVolume = controls.master_volume) {
+    const {
+      transient_level: _transientLevel,
+      drone_level: _droneLevel,
+      ...visibleControls
+    } = controls;
+    const numericMaster = Number(masterVolume);
+
     return {
+      ...visibleControls,
+      master_volume: Number.isFinite(numericMaster)
+        ? clamp(numericMaster, 0, 100)
+        : 82,
+    };
+  }
+
+  getDefaultControlsForPreset(presetId, masterVolume) {
+    const controls = {
       ...this.config.defaults,
       ...this.config.presets[presetId].controls,
     };
+
+    return this.sanitizeControls(controls, masterVolume ?? controls.master_volume);
   }
 
   setSoundConfig(soundConfig) {
     const previousControls = { ...this.controls };
+    const previousMaster = previousControls.master_volume;
     this.config = normalizeSoundConfig(soundConfig);
 
     if (!this.config.presets[this.currentPresetId]) {
@@ -225,10 +286,10 @@ export class WeatherAudioEngine {
     this.currentVoiceId = this.config.voices[this.currentVoiceId]
       ? this.currentVoiceId
       : this.config.presets[this.currentPresetId].voice;
-    this.controls = {
-      ...this.getDefaultControlsForPreset(this.currentPresetId),
+    this.controls = this.sanitizeControls({
+      ...this.getDefaultControlsForPreset(this.currentPresetId, previousMaster),
       ...previousControls,
-    };
+    }, previousMaster);
 
     if (this.ready) {
       this.filter.Q.value = this.config.master.filter_q;
@@ -244,7 +305,10 @@ export class WeatherAudioEngine {
 
     this.currentPresetId = presetId;
     this.currentVoiceId = this.config.presets[presetId].voice;
-    this.controls = this.getDefaultControlsForPreset(presetId);
+    this.controls = this.getDefaultControlsForPreset(
+      presetId,
+      this.controls.master_volume
+    );
 
     if (this.ready) {
       this.rebuildDrone();
@@ -261,11 +325,22 @@ export class WeatherAudioEngine {
   }
 
   setControl(name, value) {
+    if (name === "transient_level" || name === "drone_level") {
+      return;
+    }
+
     if (!(name in this.controls)) {
       return;
     }
 
-    this.controls[name] = value;
+    if (name === "master_volume") {
+      const numericValue = Number(value);
+      this.controls[name] = Number.isFinite(numericValue)
+        ? clamp(numericValue, 0, 100)
+        : this.controls[name];
+    } else {
+      this.controls[name] = value;
+    }
 
     if (this.ready) {
       this.syncEngineState();
@@ -313,12 +388,12 @@ export class WeatherAudioEngine {
     const droneLevel =
       phaseDrone *
       (0.55 + normalized.humidity * 0.7) *
-      (this.controls.drone_level / 100) *
+      this.getDroneLevelScale() *
       1.2;
-    const delayMix = this.controls.delay_mix / 100;
-    const reverbMix = this.controls.reverb_mix / 100;
+    const delayMix = clamp(this.controls.delay_mix / 100, 0, 1);
+    const reverbMix = clamp(this.controls.reverb_mix / 100, 0, 1);
     const delayTime = this.controls.delay_time_ms / 1000 + normalized.wind * 0.01;
-    const delayFeedback = clamp(this.controls.delay_feedback / 100, 0, 0.92);
+    const delayFeedback = clamp(this.controls.delay_feedback / 100, 0, MAX_DELAY_FEEDBACK);
     const delayTone = clamp(
       this.controls.delay_tone * (1 - normalized.rain * 0.12),
       200,
@@ -331,14 +406,14 @@ export class WeatherAudioEngine {
     );
 
     this.master.gain.cancelScheduledValues(now);
-    this.master.gain.linearRampToValueAtTime(
-      this.config.master.gain * (this.controls.master_volume / 100),
-      now + 0.18
-    );
+    this.master.gain.setTargetAtTime(this.getMasterGainTarget(), now, 0.08);
 
     this.filter.type = this.controls.filter_type;
     this.filter.Q.cancelScheduledValues(now);
-    this.filter.Q.linearRampToValueAtTime(this.controls.filter_resonance, now + 0.18);
+    this.filter.Q.linearRampToValueAtTime(
+      clamp(this.controls.filter_resonance, 0.1, MAX_FILTER_RESONANCE),
+      now + 0.18
+    );
     this.filter.frequency.cancelScheduledValues(now);
     this.filter.frequency.linearRampToValueAtTime(
       clamp(filterFrequency, 80, 12000),
@@ -346,26 +421,26 @@ export class WeatherAudioEngine {
     );
 
     this.delaySend.gain.cancelScheduledValues(now);
-    this.delaySend.gain.linearRampToValueAtTime(delayMix * 0.78, now + 0.2);
+    this.delaySend.gain.linearRampToValueAtTime(delayMix * MAX_DELAY_SEND, now + 0.28);
     this.delayWet.gain.cancelScheduledValues(now);
-    this.delayWet.gain.linearRampToValueAtTime(delayMix, now + 0.2);
+    this.delayWet.gain.linearRampToValueAtTime(delayMix * MAX_DELAY_WET, now + 0.28);
     this.delayFeedback.gain.cancelScheduledValues(now);
-    this.delayFeedback.gain.linearRampToValueAtTime(delayFeedback, now + 0.2);
+    this.delayFeedback.gain.linearRampToValueAtTime(delayFeedback, now + 0.28);
     this.delayNode.delayTime.cancelScheduledValues(now);
-    this.delayNode.delayTime.linearRampToValueAtTime(clamp(delayTime, 0.04, 1.2), now + 0.2);
+    this.delayNode.delayTime.linearRampToValueAtTime(clamp(delayTime, 0.04, 1.2), now + 0.28);
     this.delayTone.frequency.cancelScheduledValues(now);
-    this.delayTone.frequency.linearRampToValueAtTime(delayTone, now + 0.2);
+    this.delayTone.frequency.linearRampToValueAtTime(delayTone, now + 0.28);
 
     this.reverbSend.gain.cancelScheduledValues(now);
-    this.reverbSend.gain.linearRampToValueAtTime(reverbMix * 0.78, now + 0.2);
+    this.reverbSend.gain.linearRampToValueAtTime(reverbMix * MAX_REVERB_SEND, now + 0.35);
     this.reverbWet.gain.cancelScheduledValues(now);
-    this.reverbWet.gain.linearRampToValueAtTime(reverbMix, now + 0.2);
+    this.reverbWet.gain.linearRampToValueAtTime(reverbMix * MAX_REVERB_WET, now + 0.35);
     this.reverbTone.frequency.cancelScheduledValues(now);
-    this.reverbTone.frequency.linearRampToValueAtTime(reverbTone, now + 0.2);
+    this.reverbTone.frequency.linearRampToValueAtTime(reverbTone, now + 0.35);
     this.reverbPreDelay.delayTime.cancelScheduledValues(now);
     this.reverbPreDelay.delayTime.linearRampToValueAtTime(
       this.controls.reverb_predelay_ms / 1000,
-      now + 0.2
+      now + 0.35
     );
     this.rebuildReverb();
 
@@ -402,26 +477,24 @@ export class WeatherAudioEngine {
     const preDelay = clamp(this.controls.reverb_predelay_ms / 1000, 0, 0.2);
     const length = Math.floor(this.context.sampleRate * (decay + preDelay));
     const impulse = this.context.createBuffer(
-      2,
+      1,
       Math.max(length, 1),
       this.context.sampleRate
     );
 
-    for (let channelIndex = 0; channelIndex < impulse.numberOfChannels; channelIndex += 1) {
-      const channel = impulse.getChannelData(channelIndex);
+    const channel = impulse.getChannelData(0);
 
-      for (let sampleIndex = 0; sampleIndex < length; sampleIndex += 1) {
-        const time = sampleIndex / this.context.sampleRate;
+    for (let sampleIndex = 0; sampleIndex < length; sampleIndex += 1) {
+      const time = sampleIndex / this.context.sampleRate;
 
-        if (time < preDelay) {
-          channel[sampleIndex] = 0;
-          continue;
-        }
-
-        const tailTime = (time - preDelay) / decay;
-        const envelope = (1 - tailTime) ** 2.2;
-        channel[sampleIndex] = (Math.random() * 2 - 1) * Math.max(envelope, 0);
+      if (time < preDelay) {
+        channel[sampleIndex] = 0;
+        continue;
       }
+
+      const tailTime = (time - preDelay) / decay;
+      const envelope = (1 - tailTime) ** 2.2;
+      channel[sampleIndex] = (Math.random() * 2 - 1) * Math.max(envelope, 0);
     }
 
     this.reverbConvolver.buffer = impulse;
@@ -471,11 +544,9 @@ export class WeatherAudioEngine {
 
   triggerLiteParticle(particle, viewport, type, now, energy, eventSource = "pointer") {
     const { normalized } = this.atmosphere ?? FALLBACK_ATMOSPHERE;
-    const xRatio = clamp(particle.x / viewport.width, 0, 1);
     const yRatio = clamp(particle.y / viewport.height, 0, 1);
     const oscillator = this.context.createOscillator();
     const gain = this.context.createGain();
-    const panner = this.context.createStereoPanner();
     const voiceToken = Symbol(`lite-${type}`);
     const baseFrequency = mapRange(
       1 - yRatio,
@@ -494,7 +565,7 @@ export class WeatherAudioEngine {
     const level =
       (type === "edge" ? 0.016 : 0.024) *
       (0.45 + energy * 0.55) *
-      (this.controls.transient_level / 100);
+      this.getTransientLevelScale();
     const stopTime = now + attack + release + 0.03;
 
     oscillator.type = type === "edge" ? "sine" : eventSource === "emitter" ? "triangle" : "sine";
@@ -508,17 +579,13 @@ export class WeatherAudioEngine {
     gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, level), now + attack);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + attack + release);
 
-    panner.pan.value = clamp(xRatio * 2 - 1 + randomBetween(-0.06, 0.06), -1, 1);
-
     oscillator.connect(gain);
-    gain.connect(panner);
-    panner.connect(this.compressor);
+    gain.connect(this.compressor);
     this.activeTransientVoices.add(voiceToken);
 
     oscillator.onended = () => {
       oscillator.disconnect();
       gain.disconnect();
-      panner.disconnect();
       this.activeTransientVoices.delete(voiceToken);
     };
 
@@ -542,7 +609,6 @@ export class WeatherAudioEngine {
       0,
       this.transientBudgetCapacity
     );
-    const xRatio = clamp(particle.x / viewport.width, 0, 1);
     const yRatio = clamp(particle.y / viewport.height, 0, 1);
     const energy = clamp((particle.energy ?? 0.4) * (particle.soundBias ?? 1), 0.1, 1.2);
     const triggerSpacing =
@@ -579,7 +645,6 @@ export class WeatherAudioEngine {
     const noteBus = this.context.createGain();
     const voiceFilter = this.context.createBiquadFilter();
     const gain = this.context.createGain();
-    const panner = this.context.createStereoPanner();
     const denseMode = loadRatio > 0.45;
     const overloadMode = loadRatio > 0.7;
     const baseFrequency = mapRange(1 - yRatio, 0, 1, 110, 880);
@@ -598,11 +663,14 @@ export class WeatherAudioEngine {
       Math.max(0.08, voice.release * preset.release_scale) *
       (0.76 + normalized.humidity * 0.62 + normalized.rain * 0.24) *
       mapRange(loadRatio, 0, 1, 1, 0.55);
-    const level =
+    const level = clamp(
       levelBase *
-      (0.26 + energy * 0.74) *
-      (this.controls.transient_level / 100) *
-      0.9;
+        (0.24 + energy * 0.54) *
+        this.getTransientLevelScale() *
+        0.72,
+      0.0002,
+      0.36
+    );
     const congestionScale = mapRange(
       this.activeTransientVoices.size,
       0,
@@ -623,7 +691,8 @@ export class WeatherAudioEngine {
     const voiceToken = Symbol(type);
 
     voiceFilter.type = "lowpass";
-    voiceFilter.Q.value = 0.4 + this.controls.filter_resonance * 0.18;
+    voiceFilter.Q.value =
+      0.4 + clamp(this.controls.filter_resonance, 0.1, MAX_FILTER_RESONANCE) * 0.14;
     voiceFilter.frequency.setValueAtTime(clamp(filterBase * 0.45, 80, 12000), now);
     voiceFilter.frequency.exponentialRampToValueAtTime(
       peakCutoff,
@@ -632,12 +701,6 @@ export class WeatherAudioEngine {
     voiceFilter.frequency.exponentialRampToValueAtTime(
       filterBase,
       now + attack + release * 0.72
-    );
-
-    panner.pan.value = clamp(
-      xRatio * 2 - 1 + randomBetween(-voice.stereo_spread, voice.stereo_spread),
-      -1,
-      1
     );
 
     gain.gain.setValueAtTime(0.0001, now);
@@ -649,8 +712,7 @@ export class WeatherAudioEngine {
 
     noteBus.connect(voiceFilter);
     voiceFilter.connect(gain);
-    gain.connect(panner);
-    panner.connect(this.inputBus);
+    gain.connect(this.inputBus);
     this.activeTransientVoices.add(voiceToken);
 
     const createOscillatorVoice = (wave, frequency, gainAmount, detune = 0) => {
@@ -729,7 +791,6 @@ export class WeatherAudioEngine {
       noteBus.disconnect();
       voiceFilter.disconnect();
       gain.disconnect();
-      panner.disconnect();
       this.activeTransientVoices.delete(voiceToken);
     }, Math.max(0, (stopTime - now) * 1000 + 50));
   }
@@ -756,7 +817,7 @@ export class WeatherAudioEngine {
       const gain = this.context.createGain();
       oscillator.type = preset.drone_types[index] ?? preset.drone_types[0] ?? "sine";
       oscillator.frequency.value = frequency;
-      gain.gain.value = preset.drone_gains[index] ?? preset.drone_gains[0] ?? 0.02;
+      gain.gain.value = 0.0001;
       oscillator.connect(gain);
       gain.connect(this.droneGain);
       oscillator.start();

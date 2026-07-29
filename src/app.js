@@ -18,10 +18,6 @@ const refreshButton = document.querySelector("#refresh-button");
 
 const masterVolumeControl = document.querySelector("#master-volume-control");
 const masterVolumeOutput = document.querySelector("#master-volume-output");
-const transientControl = document.querySelector("#transient-control");
-const transientOutput = document.querySelector("#transient-output");
-const droneControl = document.querySelector("#drone-control");
-const droneOutput = document.querySelector("#drone-output");
 
 const filterTypeSelect = document.querySelector("#filter-type-select");
 const filterCutoffControl = document.querySelector("#filter-cutoff-control");
@@ -86,16 +82,6 @@ const SYNTH_RANGE_CONTROLS = {
   master_volume: {
     input: masterVolumeControl,
     output: masterVolumeOutput,
-    format: (value) => `${Math.round(value)}%`,
-  },
-  transient_level: {
-    input: transientControl,
-    output: transientOutput,
-    format: (value) => `${Math.round(value)}%`,
-  },
-  drone_level: {
-    input: droneControl,
-    output: droneOutput,
     format: (value) => `${Math.round(value)}%`,
   },
   filter_cutoff: {

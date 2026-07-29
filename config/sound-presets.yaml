@@ -4,8 +4,6 @@ master:
 
 defaults:
   master_volume: 82
-  transient_level: 78
-  drone_level: 64
   filter_type: lowpass
   filter_cutoff: 1900
   filter_resonance: 0.7
@@ -39,7 +37,6 @@ voices:
     attack: 0.012
     release: 0.42
     filter_env: 0.56
-    stereo_spread: 0.14
     fm_ratio: 0
     fm_index: 0
     fm_wave: sine
@@ -62,7 +59,6 @@ voices:
     attack: 0.006
     release: 0.24
     filter_env: 0.92
-    stereo_spread: 0.08
     fm_ratio: 0
     fm_index: 0
     fm_wave: sine
@@ -85,7 +81,6 @@ voices:
     attack: 0.004
     release: 1.2
     filter_env: 0.3
-    stereo_spread: 0.2
     fm_ratio: 3.2
     fm_index: 0.9
     fm_wave: sine
@@ -108,7 +103,6 @@ voices:
     attack: 0.018
     release: 0.5
     filter_env: 0.44
-    stereo_spread: 0.1
     fm_ratio: 0
     fm_index: 0
     fm_wave: sine
@@ -131,7 +125,6 @@ voices:
     attack: 0.015
     release: 0.86
     filter_env: 0.38
-    stereo_spread: 0.18
     fm_ratio: 1.5
     fm_index: 0.24
     fm_wave: sine
@@ -159,9 +152,6 @@ presets:
     wind_pitch: 40
     temperature_pitch: 10
     controls:
-      master_volume: 82
-      transient_level: 76
-      drone_level: 64
       filter_type: lowpass
       filter_cutoff: 2100
       filter_resonance: 0.8
@@ -198,9 +188,6 @@ presets:
     wind_pitch: 24
     temperature_pitch: 7
     controls:
-      master_volume: 78
-      transient_level: 62
-      drone_level: 72
       filter_type: lowpass
       filter_cutoff: 1320
       filter_resonance: 0.6
@@ -237,9 +224,6 @@ presets:
     wind_pitch: 48
     temperature_pitch: 12
     controls:
-      master_volume: 84
-      transient_level: 84
-      drone_level: 52
       filter_type: bandpass
       filter_cutoff: 2400
       filter_resonance: 2.8
@@ -276,9 +260,6 @@ presets:
     wind_pitch: 18
     temperature_pitch: 6
     controls:
-      master_volume: 76
-      transient_level: 54
-      drone_level: 78
       filter_type: lowpass
       filter_cutoff: 980
       filter_resonance: 1.3
